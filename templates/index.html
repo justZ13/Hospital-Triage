@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-gradient text-white">
+                <h5 class="mb-0"><i class="bi bi-sliders"></i> Simulation Controls</h5>
+            </div>
+            <div class="card-body">
+                <form id="sim-form">
+                    <div class="mb-3">
+                        <label for="num_doctors" class="form-label fw-bold">Number of Staff</label>
+                        <input type="number" class="form-control form-control-lg" id="num_doctors" name="num_doctors" min="1" max="20" value="3" required>
+                        <small class="text-muted">1–20 doctors</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="avg_arrival" class="form-label fw-bold">Avg Minutes Between Arrivals</label>
+                        <input type="number" class="form-control form-control-lg" id="avg_arrival" name="avg_arrival" min="0.1" step="0.1" value="10" required>
+                        <small class="text-muted">Exponential distribution mean</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="sim_time" class="form-label fw-bold">Simulation Run Time (minutes)</label>
+                        <input type="number" class="form-control form-control-lg" id="sim_time" name="sim_time" min="10" step="10" value="480" required>
+                        <small class="text-muted">8 hours = 480 min</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="num_replications" class="form-label fw-bold">Number of Replications</label>
+                        <input type="number" class="form-control form-control-lg" id="num_replications" name="num_replications" min="1" max="100" value="1" required>
+                        <small class="text-muted">Monte Carlo experiment runs</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg w-100" id="run-btn">
+                        <i class="bi bi-play-fill"></i> Run Simulation
+                    </button>
+                </form>
+
+                <div id="status-panel" class="mt-3 p-3 bg-light rounded d-none">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                            <span class="visually-hidden">Running...</span>
+                        </div>
+                        <span>Running simulation...</span>
+                    </div>
+                    <div class="progress">
+                        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <small id="progress-text" class="text-muted">0%</small>
+                </div>
+
+                <div id="error-panel" class="mt-3 alert alert-danger d-none" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <span id="error-text"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mt-3">
+            <div class="card-header bg-gradient text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> About This Model</h5>
+            </div>
+            <div class="card-body small">
+                <p>This is a discrete-event simulation of a hospital triage system using SimPy. Key features:</p>
+                <ul class="mb-0">
+                    <li><strong>Stochastic arrivals:</strong> Exponential inter-arrival times</li>
+                    <li><strong>Priority queuing:</strong> 3 severity levels (Emergency, Urgent, Non-Urgent)</li>
+                    <li><strong>Monte Carlo:</strong> Run multiple replications for confidence intervals</li>
+                    <li><strong>Performance metrics:</strong> Wait times, throughput, service levels</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-gradient text-white">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Results & Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div id="results-container">
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-file-earmark-bar-graph" style="font-size: 3rem;"></i>
+                        <p class="mt-3">Run a simulation to see results and charts</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('sim-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const num_doctors = document.getElementById('num_doctors').value;
+    const avg_arrival = document.getElementById('avg_arrival').value;
+    const sim_time = document.getElementById('sim_time').value;
+    const num_replications = document.getElementById('num_replications').value;
+
+    // Show status
+    document.getElementById('status-panel').classList.remove('d-none');
+    document.getElementById('error-panel').classList.add('d-none');
+    document.getElementById('run-btn').disabled = true;
+
+    try {
+        const res = await fetch('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ num_doctors, avg_arrival, sim_time, num_replications })
+        });
+
+        if (!res.ok) throw new Error('Failed to start simulation');
+
+        // Poll for status
+        pollStatus();
+    } catch (err) {
+        showError(err.message);
+        document.getElementById('status-panel').classList.add('d-none');
+        document.getElementById('run-btn').disabled = false;
+    }
+});
+
+async function pollStatus() {
+    const pollInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/api/status');
+            const state = await res.json();
+
+            document.getElementById('progress-bar').style.width = state.progress + '%';
+            document.getElementById('progress-text').textContent = state.progress + '%';
+
+            if (!state.running) {
+                clearInterval(pollInterval);
+                if (state.error) {
+                    showError(state.error);
+                } else {
+                    await loadResults();
+                }
+                document.getElementById('status-panel').classList.add('d-none');
+                document.getElementById('run-btn').disabled = false;
+            }
+        } catch (err) {
+            console.error('Poll error:', err);
+        }
+    }, 500);
+}
+
+async function loadResults() {
+    try {
+        const res = await fetch('/api/results');
+        if (!res.ok) throw new Error('No results available');
+        
+        const data = await res.json();
+        displayResults(data);
+    } catch (err) {
+        showError(err.message);
+    }
+}
+
+function displayResults(data) {
+    const metrics = data.metrics;
+    const container = document.getElementById('results-container');
+
+    let html = `
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value">${metrics.total_patients}</div>
+                    <div class="stat-label">Total Patients</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value">${metrics.avg_wait}</div>
+                    <div class="stat-label">Avg Wait (min)</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value">${metrics.max_wait}</div>
+                    <div class="stat-label">Max Wait (min)</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value">${metrics.avg_service}</div>
+                    <div class="stat-label">Avg Service (min)</div>
+                </div>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-box" data-bs-toggle="tab" data-bs-target="#chart-box" type="button" role="tab">Wait Time Distribution</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-pie" data-bs-toggle="tab" data-bs-target="#chart-pie" type="button" role="tab">Throughput</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-line" data-bs-toggle="tab" data-bs-target="#chart-line" type="button" role="tab">Wait Times Over Time</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-data" data-bs-toggle="tab" data-bs-target="#chart-data" type="button" role="tab">Raw Data</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="chart-box" role="tabpanel">
+                <div id="plot-box" style="height: 400px;"></div>
+            </div>
+            <div class="tab-pane fade" id="chart-pie" role="tabpanel">
+                <div id="plot-pie" style="height: 400px;"></div>
+            </div>
+            <div class="tab-pane fade" id="chart-line" role="tabpanel">
+                <div id="plot-line" style="height: 400px;"></div>
+            </div>
+            <div class="tab-pane fade" id="chart-data" role="tabpanel">
+                <div id="data-table-container" class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <a href="/api/download" class="btn btn-success btn-sm" download>
+                <i class="bi bi-download"></i> Download CSV
+            </a>
+        </div>
+    `;
+
+    container.innerHTML = html;
+
+    // Render charts
+    Plotly.newPlot('plot-box', JSON.parse(data.charts.box).data, JSON.parse(data.charts.box).layout, {responsive: true});
+    Plotly.newPlot('plot-pie', JSON.parse(data.charts.pie).data, JSON.parse(data.charts.pie).layout, {responsive: true});
+    Plotly.newPlot('plot-line', JSON.parse(data.charts.line).data, JSON.parse(data.charts.line).layout, {responsive: true});
+
+    // Data table
+    const tableHtml = `
+        <table class="table table-sm table-hover">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>ID</th><th>Severity</th><th>Wait (min)</th><th>Service (min)</th><th>Total (min)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${data.data.map(row => `
+                    <tr>
+                        <td>${row.ID}</td>
+                        <td>${row.Severity}</td>
+                        <td>${row['Wait Time (min)']}</td>
+                        <td>${row['Service Time (min)']}</td>
+                        <td>${row['Total Time']}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    document.getElementById('data-table-container').innerHTML = tableHtml;
+}
+
+function showError(msg) {
+    const panel = document.getElementById('error-panel');
+    document.getElementById('error-text').textContent = msg;
+    panel.classList.remove('d-none');
+}
+</script>
+{% endblock %}
