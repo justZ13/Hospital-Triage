@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 import json
+import io
 import plotly.graph_objects as go
 import plotly.express as px
 import threading
@@ -94,42 +95,50 @@ def get_status():
 def get_results():
     """Fetch latest results."""
     if sim_state['result']:
-        df = pd.read_json(sim_state['result'], orient='split')
-        
-        # Generate charts
-        fig_box = px.box(df, x='Severity', y='Wait Time (min)', color='Severity',
-                         color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
-                         title="Wait Time Distribution by Severity")
-        
-        throughput_df = df.groupby('Severity').size().reset_index(name='Count')
-        fig_pie = px.pie(throughput_df, values='Count', names='Severity', hole=0.4,
-                         color='Severity', color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
-                         title="Patient Throughput")
-        
-        # Wait time over time
-        fig_line = px.line(df.sort_values('ID'), x='ID', y='Wait Time (min)', 
-                           color='Severity', title="Wait Times Over Simulation",
-                           color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
-        
-        # Metrics
-        metrics = {
-            'total_patients': int(len(df)),
-            'avg_wait': round(df['Wait Time (min)'].mean(), 2),
-            'max_wait': round(df['Wait Time (min)'].max(), 2),
-            'min_wait': round(df['Wait Time (min)'].min(), 2),
-            'avg_service': round(df['Service Time (min)'].mean(), 2),
-            'throughput_per_hour': round((len(df) / (df['Total Time'].sum() / 60)) * 100, 2) if df['Total Time'].sum() > 0 else 0
-        }
-        
-        return jsonify({
-            'metrics': metrics,
-            'charts': {
-                'box': fig_box.to_json(),
-                'pie': fig_pie.to_json(),
-                'line': fig_line.to_json()
-            },
-            'data': df.to_dict('records')
-        })
+        try:
+            # sim_state['result'] is a JSON string produced earlier; read it safely from a buffer
+            buf = io.StringIO(sim_state['result'])
+            df = pd.read_json(buf, orient='split')
+
+            # Limit rows returned to avoid huge payloads to the browser
+            preview_df = df.head(200)
+
+            # Generate charts
+            fig_box = px.box(preview_df, x='Severity', y='Wait Time (min)', color='Severity',
+                             color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
+                             title="Wait Time Distribution by Severity")
+
+            throughput_df = df.groupby('Severity').size().reset_index(name='Count')
+            fig_pie = px.pie(throughput_df, values='Count', names='Severity', hole=0.4,
+                             color='Severity', color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
+                             title="Patient Throughput")
+
+            # Wait time over time (use preview for plotting density if needed)
+            fig_line = px.line(preview_df.sort_values('ID'), x='ID', y='Wait Time (min)', 
+                               color='Severity', title="Wait Times Over Simulation",
+                               color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
+
+            # Metrics (computed on full df)
+            metrics = {
+                'total_patients': int(len(df)),
+                'avg_wait': round(df['Wait Time (min)'].mean(), 2) if not df.empty else 0,
+                'max_wait': round(df['Wait Time (min)'].max(), 2) if not df.empty else 0,
+                'min_wait': round(df['Wait Time (min)'].min(), 2) if not df.empty else 0,
+                'avg_service': round(df['Service Time (min)'].mean(), 2) if not df.empty else 0,
+                'throughput_per_hour': round((len(df) / (df['Total Time'].sum() / 60)) * 100, 2) if df['Total Time'].sum() > 0 else 0
+            }
+
+            return jsonify({
+                'metrics': metrics,
+                'charts': {
+                    'box': fig_box.to_json(),
+                    'pie': fig_pie.to_json(),
+                    'line': fig_line.to_json()
+                },
+                'data': preview_df.to_dict('records')
+            })
+        except Exception as e:
+            return jsonify({'error': f'Failed to prepare results: {str(e)}'}), 500
     return jsonify({'error': 'No results available'}), 400
 
 
