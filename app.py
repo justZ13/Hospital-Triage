@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import pandas as pd
 import json
 import plotly.graph_objects as go
@@ -6,11 +7,15 @@ import plotly.express as px
 import threading
 import time
 from datetime import datetime
+import os
 
 import simulation
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
+
+# Enable CORS for GitHub Pages & remote deployments
+CORS(app)
 
 # Global state for async runs
 sim_state = {'running': False, 'progress': 0, 'result': None, 'error': None}
@@ -139,4 +144,6 @@ def download_csv():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, port=port, host='0.0.0.0')

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Triage Simulation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+            --success-color: #198754;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --light-bg: #f8f9fa;
+            --card-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+            --border-radius: 12px;
+        }
+
+        * {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
+            color: #2d3748;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .navbar-brand {
+            font-size: 1.4rem;
+            letter-spacing: 0.5px;
+        }
+
+        .card {
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            border: 0;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            color: white;
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            padding: 1.2rem;
+            border: 0;
+        }
+
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.1);
+        }
+
+        .btn {
+            border-radius: 8px;
+            font-weight: 600;
+            padding: 0.65rem 1.5rem;
+            transition: all 0.3s ease;
+            border: 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #6a408a 100%);
+            color: white;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:nth-child(2) {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
+        }
+
+        .stat-card:nth-child(3) {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            box-shadow: 0 4px 12px rgba(67, 233, 123, 0.3);
+        }
+
+        .stat-card:nth-child(4) {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            box-shadow: 0 4px 12px rgba(250, 112, 154, 0.3);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-info {
+            background: #cff0fc;
+            border: 0;
+            border-radius: var(--border-radius);
+            border-left: 4px solid #0dcaf0;
+        }
+
+        footer {
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .backend-alert {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .navbar-brand {
+                font-size: 1.1rem;
+            }
+            .stat-card {
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-gradient sticky-top shadow-sm">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="bi bi-hospital"></i> Hospital Triage Digital Twin
+            </a>
+            <span class="navbar-text text-light small">
+                GitHub Pages + Remote Backend
+            </span>
+        </div>
+    </nav>
+
+    <main class="container-fluid py-4">
+        <div id="backend-alert" class="backend-alert d-none">
+            <i class="bi bi-exclamation-triangle"></i> Backend URL not configured. 
+            <a href="javascript:configureBackend()" class="fw-bold">Click here to set it.</a>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-lg-4">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-gradient text-white">
+                        <h5 class="mb-0"><i class="bi bi-sliders"></i> Simulation Controls</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="sim-form">
+                            <div class="mb-3">
+                                <label for="num_doctors" class="form-label fw-bold">Number of Staff</label>
+                                <input type="number" class="form-control form-control-lg" id="num_doctors" name="num_doctors" min="1" max="20" value="3" required>
+                                <small class="text-muted">1–20 doctors</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="avg_arrival" class="form-label fw-bold">Avg Minutes Between Arrivals</label>
+                                <input type="number" class="form-control form-control-lg" id="avg_arrival" name="avg_arrival" min="0.1" step="0.1" value="10" required>
+                                <small class="text-muted">Exponential distribution mean</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="sim_time" class="form-label fw-bold">Simulation Run Time (minutes)</label>
+                                <input type="number" class="form-control form-control-lg" id="sim_time" name="sim_time" min="10" step="10" value="480" required>
+                                <small class="text-muted">8 hours = 480 min</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="num_replications" class="form-label fw-bold">Number of Replications</label>
+                                <input type="number" class="form-control form-control-lg" id="num_replications" name="num_replications" min="1" max="100" value="1" required>
+                                <small class="text-muted">Monte Carlo runs</small>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-lg w-100" id="run-btn">
+                                <i class="bi bi-play-fill"></i> Run Simulation
+                            </button>
+                        </form>
+
+                        <div id="status-panel" class="mt-3 p-3 bg-light rounded d-none">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                <span>Running simulation...</span>
+                            </div>
+                            <div class="progress">
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small id="progress-text" class="text-muted">0%</small>
+                        </div>
+
+                        <div id="error-panel" class="mt-3 alert alert-danger d-none" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill"></i> <span id="error-text"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-gradient text-white">
+                        <h5 class="mb-0"><i class="bi bi-graph-up"></i> Results & Analysis</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="results-container">
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-file-earmark-bar-graph" style="font-size: 3rem;"></i>
+                                <p class="mt-3">Run a simulation to see results</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-light text-center text-muted py-3 mt-5">
+        <small>&copy; 2026 Computational Science Project. Flask Backend + GitHub Pages Frontend.</small>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        let BACKEND_URL = localStorage.getItem('backendUrl') || '';
+
+        // Check backend on load
+        window.addEventListener('load', () => {
+            if (!BACKEND_URL) {
+                document.getElementById('backend-alert').classList.remove('d-none');
+            }
+        });
+
+        function configureBackend() {
+            const url = prompt('Enter your Flask backend URL (e.g., https://hospital-triage.railway.app):', BACKEND_URL);
+            if (url) {
+                BACKEND_URL = url.replace(/\/$/, ''); // Remove trailing slash
+                localStorage.setItem('backendUrl', BACKEND_URL);
+                document.getElementById('backend-alert').classList.add('d-none');
+                alert('Backend configured: ' + BACKEND_URL);
+            }
+        }
+
+        document.getElementById('sim-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!BACKEND_URL) {
+                configureBackend();
+                return;
+            }
+
+            const num_doctors = document.getElementById('num_doctors').value;
+            const avg_arrival = document.getElementById('avg_arrival').value;
+            const sim_time = document.getElementById('sim_time').value;
+            const num_replications = document.getElementById('num_replications').value;
+
+            document.getElementById('status-panel').classList.remove('d-none');
+            document.getElementById('error-panel').classList.add('d-none');
+            document.getElementById('run-btn').disabled = true;
+
+            try {
+                const res = await fetch(BACKEND_URL + '/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ num_doctors, avg_arrival, sim_time, num_replications })
+                });
+
+                if (!res.ok) throw new Error('Failed to start simulation');
+                pollStatus();
+            } catch (err) {
+                showError(err.message);
+                document.getElementById('status-panel').classList.add('d-none');
+                document.getElementById('run-btn').disabled = false;
+            }
+        });
+
+        async function pollStatus() {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(BACKEND_URL + '/api/status');
+                    const state = await res.json();
+
+                    document.getElementById('progress-bar').style.width = state.progress + '%';
+                    document.getElementById('progress-text').textContent = state.progress + '%';
+
+                    if (!state.running) {
+                        clearInterval(pollInterval);
+                        if (state.error) {
+                            showError(state.error);
+                        } else {
+                            await loadResults();
+                        }
+                        document.getElementById('status-panel').classList.add('d-none');
+                        document.getElementById('run-btn').disabled = false;
+                    }
+                } catch (err) {
+                    console.error('Poll error:', err);
+                }
+            }, 500);
+        }
+
+        async function loadResults() {
+            try {
+                const res = await fetch(BACKEND_URL + '/api/results');
+                if (!res.ok) throw new Error('No results available');
+                const data = await res.json();
+                displayResults(data);
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        function displayResults(data) {
+            const metrics = data.metrics;
+            const container = document.getElementById('results-container');
+
+            let html = `
+                <div class="row mb-4">
+                    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${metrics.total_patients}</div><div>Total Patients</div></div></div>
+                    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${metrics.avg_wait}</div><div>Avg Wait (min)</div></div></div>
+                    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${metrics.max_wait}</div><div>Max Wait (min)</div></div></div>
+                    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${metrics.avg_service}</div><div>Avg Service (min)</div></div></div>
+                </div>
+
+                <ul class="nav nav-tabs mb-3">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#chart-box" type="button">Wait Time Distribution</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chart-pie" type="button">Throughput</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chart-line" type="button">Wait Times Over Time</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chart-data" type="button">Raw Data</button></li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="chart-box" role="tabpanel"><div id="plot-box" style="height: 400px;"></div></div>
+                    <div class="tab-pane fade" id="chart-pie" role="tabpanel"><div id="plot-pie" style="height: 400px;"></div></div>
+                    <div class="tab-pane fade" id="chart-line" role="tabpanel"><div id="plot-line" style="height: 400px;"></div></div>
+                    <div class="tab-pane fade" id="chart-data" role="tabpanel"><div id="data-table-container" class="table-responsive" style="max-height: 400px; overflow-y: auto;"></div></div>
+                </div>
+
+                <div class="mt-3">
+                    <a href="${BACKEND_URL}/api/download" class="btn btn-success btn-sm" download>
+                        <i class="bi bi-download"></i> Download CSV
+                    </a>
+                </div>
+            `;
+
+            container.innerHTML = html;
+
+            Plotly.newPlot('plot-box', JSON.parse(data.charts.box).data, JSON.parse(data.charts.box).layout, {responsive: true});
+            Plotly.newPlot('plot-pie', JSON.parse(data.charts.pie).data, JSON.parse(data.charts.pie).layout, {responsive: true});
+            Plotly.newPlot('plot-line', JSON.parse(data.charts.line).data, JSON.parse(data.charts.line).layout, {responsive: true});
+
+            const tableHtml = `
+                <table class="table table-sm table-hover">
+                    <thead class="table-dark sticky-top">
+                        <tr><th>ID</th><th>Severity</th><th>Wait (min)</th><th>Service (min)</th><th>Total (min)</th></tr>
+                    </thead>
+                    <tbody>
+                        ${data.data.map(row => `<tr><td>${row.ID}</td><td>${row.Severity}</td><td>${row['Wait Time (min)']}</td><td>${row['Service Time (min)']}</td><td>${row['Total Time']}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+            `;
+            document.getElementById('data-table-container').innerHTML = tableHtml;
+        }
+
+        function showError(msg) {
+            const panel = document.getElementById('error-panel');
+            document.getElementById('error-text').textContent = msg;
+            panel.classList.remove('d-none');
+        }
+    </script>
+</body>
+</html>
