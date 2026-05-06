@@ -13,10 +13,10 @@ Open http://127.0.0.1:5000 in your browser.
 
 ## 🌐 Live Deployment
 
-- **Frontend (GitHub Pages):** https://HotokeZ.github.io/Hospital-Triage
-- **Backend (Railway):** Deploy using the [DEPLOYMENT.md](DEPLOYMENT.md) guide
+- **Frontend (GitHub Pages):** https://justz13.github.io/Hospital-Triage/
+- **Backend (Railway production):** https://hospital-triage-production.up.railway.app
 
-(First-time users need to configure the backend URL on the site.)
+(The frontend is configured to use the Railway backend above. If you change the backend, update `docs/index.html` or set `backendUrl` in your browser's localStorage.)
 
 ## 📁 Project Structure
 
@@ -110,7 +110,7 @@ Demo: Run locally or visit the live link above
 ## 🔗 Links
 
 - GitHub: https://github.com/HotokeZ/Hospital-Triage
-- Live UI: https://HotokeZ.github.io/Hospital-Triage
+- Live UI: https://justz13.github.io/Hospital-Triage/
 - Deployment: [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ---
