@@ -108,21 +108,51 @@ def get_results():
             # Limit rows returned to avoid huge payloads to the browser
             preview_df = df.head(200)
 
-            # Generate charts
-            fig_box = px.box(preview_df, x='Severity', y='Wait Time (min)', color='Severity',
-                             color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
-                             title="Wait Time Distribution by Severity")
+            # Generate charts as plain Python lists (avoid Plotly bdata binary encoding)
+            severity_order = ["🔴 Emergency", "🟡 Urgent", "🟢 Non-Urgent"]
+            color_map = {"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"}
 
-            throughput_df = df.groupby('Severity').size().reset_index(name='Count')
-            fig_pie = px.pie(throughput_df, values='Count', names='Severity', hole=0.4,
-                             color='Severity', color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
-                             title="Patient Throughput")
+            # Box traces
+            box_traces = []
+            for s in severity_order:
+                vals = preview_df[preview_df['Severity'] == s]['Wait Time (min)'].dropna().tolist()
+                box_traces.append({
+                    'type': 'box',
+                    'name': s,
+                    'y': vals,
+                    'marker': {'color': color_map.get(s, 'grey')},
+                    'boxmean': True
+                })
 
-            # Wait time over time (use preview for plotting density if needed)
-            fig_line = px.line(preview_df.sort_values('ID'), x='ID', y='Wait Time (min)', 
-                               color='Severity', title="Wait Times Over Simulation",
-                               color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
-            fig_line.update_traces(mode='lines+markers', marker=dict(size=6))
+            # Pie trace
+            throughput = df['Severity'].value_counts().reindex(severity_order).fillna(0).astype(int)
+            pie_trace = [{
+                'type': 'pie',
+                'labels': [s for s in severity_order],
+                'values': throughput.tolist(),
+                'marker': {'colors': [color_map[s] for s in severity_order]}
+            }]
+
+            # Line traces: one per severity, x=ID, y=Wait Time
+            line_traces = []
+            for s in severity_order:
+                sub = preview_df[preview_df['Severity'] == s].sort_values('ID')
+                xs = sub['ID'].tolist()
+                ys = sub['Wait Time (min)'].tolist()
+                line_traces.append({
+                    'type': 'scatter',
+                    'mode': 'lines+markers',
+                    'name': s,
+                    'x': xs,
+                    'y': ys,
+                    'marker': {'size': 6},
+                    'line': {'color': color_map.get(s)}
+                })
+
+            # Layouts
+            box_layout = {'title': 'Wait Time Distribution by Severity', 'yaxis': {'title': 'Wait Time (min)'}, 'xaxis': {'title': 'Severity'}}
+            pie_layout = {'title': 'Patient Throughput'}
+            line_layout = {'title': 'Wait Times Over Simulation', 'xaxis': {'title': 'ID'}, 'yaxis': {'title': 'Wait Time (min)'}}
 
             # Metrics (computed on full df)
             metrics = {
@@ -137,9 +167,9 @@ def get_results():
             return jsonify({
                 'metrics': metrics,
                 'charts': {
-                    'box': json.loads(fig_box.to_json()),
-                    'pie': json.loads(fig_pie.to_json()),
-                    'line': json.loads(fig_line.to_json())
+                    'box': {'data': box_traces, 'layout': box_layout},
+                    'pie': {'data': pie_trace, 'layout': pie_layout},
+                    'line': {'data': line_traces, 'layout': line_layout}
                 },
                 'data': preview_df.to_dict('records')
             })
