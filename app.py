@@ -1,10 +1,12 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, send_file
 from flask_cors import CORS
 import pandas as pd
 import json
 import io
 import plotly.graph_objects as go
 import plotly.express as px
+import plotly.io as pio
+import zipfile
 import threading
 import time
 from datetime import datetime
@@ -148,11 +150,44 @@ def download_csv():
     if sim_state['result']:
         buf = io.StringIO(sim_state['result'])
         df = pd.read_json(buf, orient='split')
+        # Build CSV bytes
         csv_bytes = df.to_csv(index=False).encode('utf-8')
-        resp = Response(csv_bytes)
-        resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
-        resp.headers['Content-Disposition'] = 'attachment; filename=simulation_results.csv'
-        return resp
+
+        # Recreate charts (same as in /api/results)
+        preview_df = df.head(200)
+        fig_box = px.box(preview_df, x='Severity', y='Wait Time (min)', color='Severity',
+                         color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
+                         title="Wait Time Distribution by Severity")
+
+        throughput_df = df.groupby('Severity').size().reset_index(name='Count')
+        fig_pie = px.pie(throughput_df, values='Count', names='Severity', hole=0.4,
+                         color='Severity', color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"},
+                         title="Patient Throughput")
+
+        fig_line = px.line(preview_df.sort_values('ID'), x='ID', y='Wait Time (min)',
+                           color='Severity', title="Wait Times Over Simulation",
+                           color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
+
+        # Create an in-memory zip with CSV + chart PNGs
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, mode='w', compression=zipfile.ZIP_DEFLATED) as z:
+            z.writestr('simulation_results.csv', csv_bytes)
+
+            # Export PNGs using kaleido
+            try:
+                box_png = pio.to_image(fig_box, format='png')
+                pie_png = pio.to_image(fig_pie, format='png')
+                line_png = pio.to_image(fig_line, format='png')
+
+                z.writestr('wait_time_distribution.png', box_png)
+                z.writestr('throughput.png', pie_png)
+                z.writestr('wait_times_over_time.png', line_png)
+            except Exception:
+                # If image export fails, include a small README explaining requirement
+                z.writestr('README.txt', 'Chart PNGs require the Python package "kaleido" for server-side image export.\nInstall and restart the app to enable PNG export.')
+
+        zip_buf.seek(0)
+        return send_file(zip_buf, mimetype='application/zip', as_attachment=True, download_name='simulation_results_with_charts.zip')
     return jsonify({'error': 'No results available'}), 400
 
 
