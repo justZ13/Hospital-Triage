@@ -122,6 +122,7 @@ def get_results():
             fig_line = px.line(preview_df.sort_values('ID'), x='ID', y='Wait Time (min)', 
                                color='Severity', title="Wait Times Over Simulation",
                                color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
+            fig_line.update_traces(mode='lines+markers', marker=dict(size=6))
 
             # Metrics (computed on full df)
             metrics = {
@@ -175,16 +176,22 @@ def download_csv():
         try:
             pdf_buf = io.BytesIO()
             with PdfPages(pdf_buf) as pdf:
-                # Figure 1: Boxplot by Severity
+                # Figure 1: Boxplot by Severity (styled to match web view)
+                import numpy as np
                 fig1, ax1 = plt.subplots(figsize=(8, 6))
-                # prepare data in same order
                 df_box = preview_df[['Severity', 'Wait Time (min)']]
-                groups = [group['Wait Time (min)'].values for name, group in df_box.groupby('Severity')]
-                labels = list(df_box.groupby('Severity').groups.keys())
-                # If grouping order is not desired, sort labels to match severity order
                 severity_order = ["🔴 Emergency", "🟡 Urgent", "🟢 Non-Urgent"]
-                grouped = [df_box[df_box['Severity'] == s]['Wait Time (min)'].values for s in severity_order]
-                ax1.boxplot(grouped, labels=[s.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','') for s in severity_order])
+                grouped = [df_box[df_box['Severity'] == s]['Wait Time (min)'].dropna().values for s in severity_order]
+                # Replace empty groups with an array of NaN to avoid boxplot errors
+                grouped_safe = [g if len(g) > 0 else np.array([np.nan]) for g in grouped]
+                bplot = ax1.boxplot(grouped_safe, labels=[s.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','') for s in severity_order], patch_artist=True, showfliers=True)
+                # color boxes to match the site
+                colors = ['red', 'orange', 'green']
+                for patch, color in zip(bplot['boxes'], colors):
+                    patch.set_facecolor(color)
+                    patch.set_alpha(0.3)
+                for median in bplot['medians']:
+                    median.set_color('black')
                 ax1.set_title('Wait Time Distribution by Severity')
                 ax1.set_ylabel('Wait Time (min)')
                 ax1.set_xlabel('Severity')
