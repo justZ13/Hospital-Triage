@@ -6,3 +6,4 @@ simpy
 plotly
 kaleido
 XlsxWriter
+reportlab

@@ -7,6 +7,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 import plotly.io as pio
 import zipfile
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
 import threading
 import time
 from datetime import datetime
@@ -168,88 +171,50 @@ def download_csv():
                            color='Severity', title="Wait Times Over Simulation",
                            color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
 
-        # Try to create a real Excel workbook with native charts using XlsxWriter
+        # Create a PDF with the three charts and include the CSV in a ZIP for download
         try:
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Write full data
-                df.to_excel(writer, sheet_name='Data', index=False)
+            # Export chart PNGs using kaleido
+            box_png = pio.to_image(fig_box, format='png')
+            pie_png = pio.to_image(fig_pie, format='png')
+            line_png = pio.to_image(fig_line, format='png')
 
-                workbook = writer.book
-                data_ws = writer.sheets['Data']
+            # Build PDF with reportlab, one chart per page
+            pdf_buf = io.BytesIO()
+            c = canvas.Canvas(pdf_buf, pagesize=letter)
+            width, height = letter
+            margin = 40
 
-                # Prepare helper columns for per-severity series
-                start_col = df.shape[1] + 1  # place helpers after existing columns (1-based for xlsxwriter)
-                # Column indices (0-based for pandas, xlsxwriter uses 0-based API in add_series)
-                id_col = 0
-                wait_col = df.columns.get_loc('Wait Time (min)')
-                severity_col = df.columns.get_loc('Severity')
+            for title, img_bytes in [('Wait Time Distribution', box_png), ('Patient Throughput', pie_png), ('Wait Times Over Simulation', line_png)]:
+                img = ImageReader(io.BytesIO(img_bytes))
+                iw, ih = img.getSize()
+                max_w = width - 2 * margin
+                max_h = height - 2 * margin - 40
+                scale = min(max_w / iw, max_h / ih, 1)
+                draw_w, draw_h = iw * scale, ih * scale
+                x = (width - draw_w) / 2
+                y = (height - draw_h) / 2 - 20
 
-                # Build lists for each severity
-                sev_labels = ["🔴 Emergency", "🟡 Urgent", "🟢 Non-Urgent"]
-                helper_cols = {}
-                for i, sev in enumerate(sev_labels):
-                    col_name = f'Wait_{i}'
-                    helper_cols[sev] = col_name
-                    # compute series: value if severity matches else None
-                    series_vals = [v if s == sev else None for v, s in zip(df['Wait Time (min)'], df['Severity'])]
-                    # write column header and values starting at row 1
-                    data_ws.write(0, df.shape[1] + i + 1, col_name)
-                    for r, val in enumerate(series_vals, start=1):
-                        data_ws.write(r, df.shape[1] + i + 1, val)
+                c.setFont('Helvetica-Bold', 14)
+                c.drawCentredString(width / 2, height - margin, title)
+                c.drawImage(img, x, y, width=draw_w, height=draw_h)
+                c.showPage()
 
-                # Also write aggregated throughput table for pie chart
-                throughput = df['Severity'].value_counts().reindex(sev_labels).fillna(0).astype(int)
-                tp_start_row = 1
-                tp_col = df.shape[1] + len(sev_labels) + 3
-                data_ws.write(0, tp_col, 'Severity')
-                data_ws.write(0, tp_col + 1, 'Count')
-                for i, sev in enumerate(sev_labels):
-                    data_ws.write(i + 1, tp_col, sev)
-                    data_ws.write(i + 1, tp_col + 1, int(throughput.get(sev, 0)))
+            c.save()
+            pdf_buf.seek(0)
 
-                # Create a Charts sheet
-                chart_ws = workbook.add_worksheet('Charts')
-
-                # Line chart: separate series per severity
-                line_chart = workbook.add_chart({'type': 'line'})
-                nrows = len(df)
-                for i, sev in enumerate(sev_labels):
-                    col_idx = df.shape[1] + i + 1
-                    # categories: IDs in column A (row 2..)
-                    line_chart.add_series({
-                        'name':       sev,
-                        'categories': ['Data', 1, id_col, nrows, id_col],
-                        'values':     ['Data', 1, col_idx, nrows, col_idx],
-                        'marker': {'type': 'circle'},
-                    })
-                line_chart.set_title({'name': 'Wait Times Over Simulation'})
-                line_chart.set_x_axis({'name': 'ID'})
-                line_chart.set_y_axis({'name': 'Wait Time (min)'})
-                chart_ws.insert_chart('A1', line_chart, {'x_scale': 1.5, 'y_scale': 1.0})
-
-                # Pie chart for throughput
-                pie_chart = workbook.add_chart({'type': 'pie'})
-                pie_chart.add_series({
-                    'name': 'Patient Throughput',
-                    'categories': ['Data', tp_start_row, tp_col, tp_start_row + len(sev_labels) - 1, tp_col],
-                    'values': ['Data', tp_start_row, tp_col + 1, tp_start_row + len(sev_labels) - 1, tp_col + 1],
-                })
-                pie_chart.set_title({'name': 'Patient Throughput'})
-                chart_ws.insert_chart('A20', pie_chart, {'x_scale': 1.0, 'y_scale': 1.0})
-
-                writer.save()
-                output.seek(0)
-
-            return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='simulation_results.xlsx')
-        except Exception:
-            # Fall back to ZIP with images if XlsxWriter not available or chart creation fails
+            # Create ZIP with PDF + CSV
             zip_buf = io.BytesIO()
             with zipfile.ZipFile(zip_buf, mode='w', compression=zipfile.ZIP_DEFLATED) as z:
                 z.writestr('simulation_results.csv', csv_bytes)
-                z.writestr('README.txt', 'Could not create native Excel charts. Install XlsxWriter and try again.')
+                z.writestr('simulation_charts.pdf', pdf_buf.getvalue())
+
             zip_buf.seek(0)
-            return send_file(zip_buf, mimetype='application/zip', as_attachment=True, download_name='simulation_results_fallback.zip')
+            return send_file(zip_buf, mimetype='application/zip', as_attachment=True, download_name='simulation_results.zip')
+        except Exception:
+            # If PDF/chart generation fails, return CSV only
+            csv_buf = io.BytesIO(csv_bytes)
+            csv_buf.seek(0)
+            return send_file(csv_buf, mimetype='text/csv', as_attachment=True, download_name='simulation_results.csv')
     return jsonify({'error': 'No results available'}), 400
 
 
