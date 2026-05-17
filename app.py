@@ -5,11 +5,11 @@ import json
 import io
 import plotly.graph_objects as go
 import plotly.express as px
-import plotly.io as pio
 import zipfile
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.utils import ImageReader
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import threading
 import time
 from datetime import datetime
@@ -171,35 +171,48 @@ def download_csv():
                            color='Severity', title="Wait Times Over Simulation",
                            color_discrete_map={"🔴 Emergency": "red", "🟡 Urgent": "orange", "🟢 Non-Urgent": "green"})
 
-        # Create a PDF with the three charts and include the CSV in a ZIP for download
+        # Create a PDF with the three charts using matplotlib and include the CSV in a ZIP
         try:
-            # Export chart PNGs using kaleido
-            box_png = pio.to_image(fig_box, format='png')
-            pie_png = pio.to_image(fig_pie, format='png')
-            line_png = pio.to_image(fig_line, format='png')
-
-            # Build PDF with reportlab, one chart per page
             pdf_buf = io.BytesIO()
-            c = canvas.Canvas(pdf_buf, pagesize=letter)
-            width, height = letter
-            margin = 40
+            with PdfPages(pdf_buf) as pdf:
+                # Figure 1: Boxplot by Severity
+                fig1, ax1 = plt.subplots(figsize=(8, 6))
+                # prepare data in same order
+                df_box = preview_df[['Severity', 'Wait Time (min)']]
+                groups = [group['Wait Time (min)'].values for name, group in df_box.groupby('Severity')]
+                labels = list(df_box.groupby('Severity').groups.keys())
+                # If grouping order is not desired, sort labels to match severity order
+                severity_order = ["🔴 Emergency", "🟡 Urgent", "🟢 Non-Urgent"]
+                grouped = [df_box[df_box['Severity'] == s]['Wait Time (min)'].values for s in severity_order]
+                ax1.boxplot(grouped, labels=[s.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','') for s in severity_order])
+                ax1.set_title('Wait Time Distribution by Severity')
+                ax1.set_ylabel('Wait Time (min)')
+                ax1.set_xlabel('Severity')
+                pdf.savefig(fig1)
+                plt.close(fig1)
 
-            for title, img_bytes in [('Wait Time Distribution', box_png), ('Patient Throughput', pie_png), ('Wait Times Over Simulation', line_png)]:
-                img = ImageReader(io.BytesIO(img_bytes))
-                iw, ih = img.getSize()
-                max_w = width - 2 * margin
-                max_h = height - 2 * margin - 40
-                scale = min(max_w / iw, max_h / ih, 1)
-                draw_w, draw_h = iw * scale, ih * scale
-                x = (width - draw_w) / 2
-                y = (height - draw_h) / 2 - 20
+                # Figure 2: Pie chart of throughput
+                fig2, ax2 = plt.subplots(figsize=(8, 6))
+                counts = df['Severity'].value_counts().reindex(severity_order).fillna(0)
+                labels_clean = [s.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','') for s in severity_order]
+                ax2.pie(counts.values, labels=labels_clean, autopct='%1.1f%%', startangle=90)
+                ax2.set_title('Patient Throughput')
+                pdf.savefig(fig2)
+                plt.close(fig2)
 
-                c.setFont('Helvetica-Bold', 14)
-                c.drawCentredString(width / 2, height - margin, title)
-                c.drawImage(img, x, y, width=draw_w, height=draw_h)
-                c.showPage()
+                # Figure 3: Line chart of wait time over ID (separate series)
+                fig3, ax3 = plt.subplots(figsize=(10, 6))
+                for s in severity_order:
+                    sub = preview_df[preview_df['Severity'] == s].sort_values('ID')
+                    if not sub.empty:
+                        ax3.plot(sub['ID'], sub['Wait Time (min)'], marker='o', label=s.replace('🔴 ','').replace('🟡 ','').replace('🟢 ',''))
+                ax3.set_title('Wait Times Over Simulation')
+                ax3.set_xlabel('ID')
+                ax3.set_ylabel('Wait Time (min)')
+                ax3.legend()
+                pdf.savefig(fig3)
+                plt.close(fig3)
 
-            c.save()
             pdf_buf.seek(0)
 
             # Create ZIP with PDF + CSV
@@ -210,8 +223,9 @@ def download_csv():
 
             zip_buf.seek(0)
             return send_file(zip_buf, mimetype='application/zip', as_attachment=True, download_name='simulation_results.zip')
-        except Exception:
-            # If PDF/chart generation fails, return CSV only
+        except Exception as e:
+            # If PDF/chart generation fails, return CSV only and log the error
+            print('Download PDF generation failed:', e)
             csv_buf = io.BytesIO(csv_bytes)
             csv_buf.seek(0)
             return send_file(csv_buf, mimetype='text/csv', as_attachment=True, download_name='simulation_results.csv')
