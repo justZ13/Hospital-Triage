@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from flask_cors import CORS
 import pandas as pd
 import json
@@ -146,9 +146,13 @@ def get_results():
 def download_csv():
     """Download results as CSV."""
     if sim_state['result']:
-        df = pd.read_json(sim_state['result'], orient='split')
-        csv = df.to_csv(index=False)
-        return csv, 200, {'Content-Disposition': 'attachment; filename=simulation_results.csv'}
+        buf = io.StringIO(sim_state['result'])
+        df = pd.read_json(buf, orient='split')
+        csv_bytes = df.to_csv(index=False).encode('utf-8')
+        resp = Response(csv_bytes)
+        resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        resp.headers['Content-Disposition'] = 'attachment; filename=simulation_results.csv'
+        return resp
     return jsonify({'error': 'No results available'}), 400
 
 
