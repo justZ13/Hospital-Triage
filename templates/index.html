@@ -239,6 +239,24 @@ function displayResults(data) {
     Plotly.newPlot('plot-pie', JSON.parse(data.charts.pie).data, JSON.parse(data.charts.pie).layout, {responsive: true});
     Plotly.newPlot('plot-line', JSON.parse(data.charts.line).data, JSON.parse(data.charts.line).layout, {responsive: true});
 
+    // Ensure Plotly redraws when Bootstrap tabs become visible
+    function resizePlots() {
+        ['plot-box','plot-pie','plot-line'].forEach(id => {
+            const gd = document.getElementById(id);
+            if (gd && typeof Plotly !== 'undefined') {
+                try { Plotly.Plots.resize(gd); } catch (e) { /* ignore */ }
+            }
+        });
+    }
+
+    // Trigger an initial resize (small delay lets the DOM settle)
+    setTimeout(resizePlots, 50);
+
+    // Hook into Bootstrap tab show events to resize plots when tabs are shown
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(btn => {
+        btn.addEventListener('shown.bs.tab', () => setTimeout(resizePlots, 50));
+    });
+
     // Data table
     const tableHtml = `
         <table class="table table-sm table-hover">
