@@ -137,9 +137,9 @@ def get_results():
             return jsonify({
                 'metrics': metrics,
                 'charts': {
-                    'box': fig_box.to_dict(),
-                    'pie': fig_pie.to_dict(),
-                    'line': fig_line.to_dict()
+                    'box': json.loads(fig_box.to_json()),
+                    'pie': json.loads(fig_pie.to_json()),
+                    'line': json.loads(fig_line.to_json())
                 },
                 'data': preview_df.to_dict('records')
             })
