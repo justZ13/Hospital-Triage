@@ -376,8 +376,8 @@
 
             container.innerHTML = html;
 
-            Plotly.newPlot('plot-box', JSON.parse(data.charts.box).data, JSON.parse(data.charts.box).layout, {responsive: true});
-            Plotly.newPlot('plot-pie', JSON.parse(data.charts.pie).data, JSON.parse(data.charts.pie).layout, {responsive: true});
+            Plotly.newPlot('plot-box', data.charts.box.data, data.charts.box.layout, {responsive: true});
+            Plotly.newPlot('plot-pie', data.charts.pie.data, data.charts.pie.layout, {responsive: true});
             Plotly.newPlot('plot-line', JSON.parse(data.charts.line).data, JSON.parse(data.charts.line).layout, {responsive: true});
 
             const tableHtml = `
